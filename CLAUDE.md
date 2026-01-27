@@ -20,6 +20,10 @@ modal run --detach modal_run.py --exp train
 - `checkpoint_utils.py` - Save/resume checkpoints (Modal preemption-safe)
 - `tensorboard_utils.py` - Real-time TensorBoard logging utility
 
+## Gotchas
+
+- **Ignore list must be hardcoded** in `add_local_dir()`. Don't try to read from .gitignore dynamically - the image definition runs on Modal's build server before files are uploaded (chicken-and-egg).
+
 ## Experiment Contract
 
 Experiments must have a `train(output_dir=".")` function:
