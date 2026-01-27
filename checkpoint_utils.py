@@ -30,15 +30,18 @@ def find_latest_checkpoint(output_dir, prefix):
     return latest, get_step(latest)
 
 
-def load_checkpoint(path, model, config=None):
-    """Load checkpoint and optionally verify config matches.
+def load_checkpoint(path, model, config):
+    """Load checkpoint and verify config matches.
 
     IMPORTANT: Call this BEFORE torch.compile(model)!
+
+    Config is required (not optional) to prevent accidentally resuming with wrong
+    hyperparameters. This caught a lr mismatch that would have silently corrupted training.
 
     Args:
         path: Path to checkpoint file
         model: Model to load weights into (not yet compiled)
-        config: Optional config dict to verify against
+        config: Config dict to verify against (required)
 
     Returns:
         checkpoint_data dict (contains optimizer_state_dict, step, etc.)
@@ -48,16 +51,14 @@ def load_checkpoint(path, model, config=None):
     """
     checkpoint_data = torch.load(path, map_location='cpu', weights_only=False)
 
-    # Verify config matches if provided
-    if config:
-        saved_config = checkpoint_data.get('config', {})
-        if saved_config:
-            for key, value in config.items():
-                saved_value = saved_config.get(key)
-                if saved_value != value:
-                    raise ValueError(
-                        f"Config mismatch: {key}={saved_value} (checkpoint) vs {value} (current)"
-                    )
+    # Verify config matches
+    saved_config = checkpoint_data.get('config', {})
+    for key, value in config.items():
+        saved_value = saved_config.get(key)
+        if saved_value != value:
+            raise ValueError(
+                f"Config mismatch: {key}={saved_value} (checkpoint) vs {value} (current)"
+            )
 
     model.load_state_dict(checkpoint_data['model_state_dict'])
     return checkpoint_data
@@ -82,15 +83,17 @@ def restore_optimizer(optimizer, checkpoint_data, device):
                 state[k] = v.to(device)
 
 
-def save_checkpoint(path, step, model, optimizer, config=None):
+def save_checkpoint(path, step, model, optimizer, config):
     """Save checkpoint with clean state dict (strips _orig_mod. prefix).
+
+    Config is required to ensure every checkpoint can be validated on resume.
 
     Args:
         path: Output path
         step: Current training step
         model: Model (may be compiled)
         optimizer: Optimizer
-        config: Optional config dict to save for verification on resume
+        config: Config dict to save for verification on resume (required)
     """
     # Strip _orig_mod. prefix from compiled model keys
     state_dict = {
@@ -102,8 +105,7 @@ def save_checkpoint(path, step, model, optimizer, config=None):
         'step': step,
         'model_state_dict': state_dict,
         'optimizer_state_dict': optimizer.state_dict(),
+        'config': config,
     }
-    if config:
-        checkpoint['config'] = config
 
     torch.save(checkpoint, path)

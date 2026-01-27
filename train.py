@@ -10,12 +10,20 @@ from checkpoint_utils import find_latest_checkpoint, load_checkpoint, save_check
 from tensorboard_utils import TBLogger
 
 
-def train(output_dir=".", epochs=10, batch_size=32):
+def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
     import torch
     import torch.nn as nn
     import torch.optim as optim
 
-    print(f"Training config: epochs={epochs}, batch_size={batch_size}")
+    # Config dict for checkpoint validation - prevents resuming with wrong hyperparameters
+    CONFIG = {
+        'experiment': 'train',
+        'epochs': epochs,
+        'batch_size': batch_size,
+        'lr': lr,
+    }
+
+    print(f"Training config: {CONFIG}")
     print(f"Output directory: {output_dir}")
     print(f"PyTorch version: {torch.__version__}")
     print(f"CUDA available: {torch.cuda.is_available()}")
@@ -32,15 +40,15 @@ def train(output_dir=".", epochs=10, batch_size=32):
         nn.Linear(64, 10),
     ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
-    # Check for existing checkpoint
-    checkpoint_prefix = "checkpoint_epoch"
+    # Check for existing checkpoint (prefix includes experiment name to avoid collisions)
+    checkpoint_prefix = f"{CONFIG['experiment']}_checkpoint_epoch"
     checkpoint_path, start_epoch = find_latest_checkpoint(output_dir, checkpoint_prefix)
     if checkpoint_path:
         print(f"Resuming from checkpoint: {checkpoint_path}")
-        checkpoint_data = load_checkpoint(checkpoint_path, model)
+        checkpoint_data = load_checkpoint(checkpoint_path, model, CONFIG)
         restore_optimizer(optimizer, checkpoint_data, device)
         start_epoch = checkpoint_data['step'] + 1
     else:
@@ -84,7 +92,7 @@ def train(output_dir=".", epochs=10, batch_size=32):
 
         # Save checkpoint every epoch
         checkpoint_path = os.path.join(output_dir, f"{checkpoint_prefix}{epoch}.pt")
-        save_checkpoint(checkpoint_path, epoch, model, optimizer)
+        save_checkpoint(checkpoint_path, epoch, model, optimizer, CONFIG)
 
     logger.close()
 
