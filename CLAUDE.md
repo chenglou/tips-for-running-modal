@@ -63,3 +63,5 @@ Download runs from Modal and view locally:
 modal volume get outputs runs/ .
 tensorboard --logdir runs/
 ```
+
+**Live monitoring**: Re-run `modal volume get outputs runs/ .` periodically while training. TensorBoard auto-detects new data.
