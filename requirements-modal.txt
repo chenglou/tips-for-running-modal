@@ -1,0 +1,4 @@
+# Minimal dependencies for Modal (no local CUDA libraries)
+torch
+numpy
+tensorboard

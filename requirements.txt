@@ -1,3 +1,5 @@
+# Local development dependencies
 torch
 numpy
+tensorboard
 modal
