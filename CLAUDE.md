@@ -50,4 +50,8 @@ logger.log(step, loss=0.5, train_acc=0.8, test_acc=0.7)
 logger.close()
 ```
 
-Then locally: `tensorboard --logdir runs/`
+Download runs from Modal and view locally:
+```bash
+modal volume get outputs runs/ .
+tensorboard --logdir runs/
+```
