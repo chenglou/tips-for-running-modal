@@ -23,6 +23,7 @@ modal run --detach modal_run.py --exp train
 ## Gotchas
 
 - **Ignore list must be hardcoded** in `add_local_dir()`. Don't try to read from .gitignore dynamically - the image definition runs on Modal's build server before files are uploaded (chicken-and-egg).
+- **Load checkpoint BEFORE `torch.compile()`** - compiled models have `_orig_mod.` prefix in state dict keys. Load into uncompiled model first, then compile.
 
 ## Experiment Contract
 
