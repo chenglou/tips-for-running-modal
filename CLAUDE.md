@@ -27,6 +27,7 @@ modal run --detach modal_run.py --exp train
 - **Config is required for checkpoints** - `load_checkpoint()` and `save_checkpoint()` require a config dict. This prevents silently resuming with wrong hyperparameters (e.g., changing lr and accidentally loading old checkpoint).
 - **Use unique checkpoint prefix per experiment** - e.g., `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`. Prevents loading wrong experiment's checkpoint from shared volume.
 - **Volumes persist indefinitely** - Old checkpoints from previous runs stick around. Check with `modal volume ls outputs`. Delete stale ones with `modal volume rm outputs <file>` if you change config.
+- **"Connection lost" doesn't mean training stopped** - When running with `--detach`, a `StreamTerminatedError: Connection lost` just means the local client lost connection to Modal. The training continues running on Modal's side. Check with `modal app list` (look for "detached" status) and `modal app logs <app-id>` to see current progress.
 
 ## Experiment Contract
 
