@@ -29,6 +29,7 @@ modal run --detach modal_run.py --exp train
 - **Volumes persist indefinitely** - Old checkpoints from previous runs stick around. Check with `modal volume ls outputs`. Delete stale ones with `modal volume rm outputs <file>` if you change config.
 - **"Connection lost" doesn't mean training stopped** - When running with `--detach`, a `StreamTerminatedError: Connection lost` just means the local client lost connection to Modal. The training continues running on Modal's side. Check with `modal app list` (look for "detached" status) and `modal app logs <app-id>` to see current progress.
 - **`modal app logs` only streams while active** - Per Modal docs, `modal app logs` shows logs streaming while the app is active. For detached/finished runs, the most reliable way to query progress is the log file written to the output volume (poll via `modal volume get`).
+- **Don't pipe `modal run --detach` through `tail`/`head`/etc.** - The detached stream stays open, so buffering commands hang forever waiting for EOF. Run the command directly without piping.
 
 ## Experiment Contract
 
