@@ -59,6 +59,13 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
     # TensorBoard logger
     logger = TBLogger(output_dir, "train")
 
+    # Log file on volume — poll with: modal volume get outputs log.txt /dev/stdout
+    log_path = os.path.join(output_dir, "log.txt")
+    def log(msg):
+        print(msg)
+        with open(log_path, "a") as f:
+            f.write(msg + "\n")
+
     # Synthetic data
     X = torch.randn(1000, 64).to(device)
     y = torch.randint(0, 10, (1000,)).to(device)
@@ -87,7 +94,7 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
         avg_loss = epoch_loss / (len(X) // batch_size)
         accuracy = 100.0 * correct / total
 
-        print(f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | Acc: {accuracy:.1f}%")
+        log(f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | Acc: {accuracy:.1f}%")
         logger.log(epoch, loss=avg_loss, train_acc=accuracy)
 
         # Save checkpoint every epoch
