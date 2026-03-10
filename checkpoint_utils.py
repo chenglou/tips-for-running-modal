@@ -3,6 +3,7 @@
 
 import os
 import glob
+import re
 import torch
 
 
@@ -23,11 +24,20 @@ def find_latest_checkpoint(output_dir, prefix):
 
     def get_step(path):
         fname = os.path.basename(path)
-        step_str = fname.replace(prefix, "").replace(".pt", "")
-        return int(step_str)
+        match = re.fullmatch(rf"{re.escape(prefix)}(\d+)\.pt", fname)
+        return int(match.group(1)) if match else None
 
-    latest = max(checkpoints, key=get_step)
-    return latest, get_step(latest)
+    checkpoint_steps = {}
+    for path in checkpoints:
+        step = get_step(path)
+        if step is not None:
+            checkpoint_steps[path] = step
+
+    if not checkpoint_steps:
+        return None, 0
+
+    latest = max(checkpoint_steps, key=checkpoint_steps.get)
+    return latest, checkpoint_steps[latest]
 
 
 def load_checkpoint(path, model, config):

@@ -30,6 +30,8 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    use_compile = device.type == "cuda"
+    print(f"torch.compile enabled: {use_compile}")
 
     # Model
     model = nn.Sequential(
@@ -40,21 +42,26 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
         nn.Linear(64, 10),
     ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
-
     # Check for existing checkpoint (prefix includes experiment name to avoid collisions)
     checkpoint_prefix = f"{CONFIG['experiment']}_checkpoint_epoch"
     checkpoint_path, start_epoch = find_latest_checkpoint(output_dir, checkpoint_prefix)
     if checkpoint_path:
         print(f"Resuming from checkpoint: {checkpoint_path}")
         checkpoint_data = load_checkpoint(checkpoint_path, model, CONFIG)
+    else:
+        checkpoint_data = None
+
+    if use_compile:
+        model = torch.compile(model)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.CrossEntropyLoss()
+
+    if checkpoint_data:
         restore_optimizer(optimizer, checkpoint_data, device)
         start_epoch = checkpoint_data['step'] + 1
     else:
         start_epoch = 0
-
-    model.to(device)
 
     # TensorBoard logger
     logger = TBLogger(output_dir, "train")
@@ -75,6 +82,7 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
         epoch_loss = 0.0
         correct = 0
         total = 0
+        num_batches = 0
 
         for i in range(0, len(X), batch_size):
             batch_X = X[i:i + batch_size]
@@ -90,8 +98,9 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
             _, predicted = outputs.max(1)
             total += batch_y.size(0)
             correct += predicted.eq(batch_y).sum().item()
+            num_batches += 1
 
-        avg_loss = epoch_loss / (len(X) // batch_size)
+        avg_loss = epoch_loss / num_batches
         accuracy = 100.0 * correct / total
 
         log(f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | Acc: {accuracy:.1f}%")
@@ -105,7 +114,11 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
 
     # Save final model
     final_path = os.path.join(output_dir, "model_final.pt")
-    torch.save(model.state_dict(), final_path)
+    final_state_dict = {
+        k.replace('_orig_mod.', ''): v
+        for k, v in model.state_dict().items()
+    }
+    torch.save(final_state_dict, final_path)
     print(f"\nFinal model saved: {final_path}")
 
     return {"final_loss": avg_loss, "final_acc": accuracy}

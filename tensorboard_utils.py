@@ -31,8 +31,8 @@ class TBLogger:
 
         Common kwargs:
             loss: training loss
-            train_acc: training accuracy (0-1 or 0-100, logged as-is)
-            test_acc: test accuracy
+            train_acc: training accuracy (accepts 0-1 or 0-100, stores percent)
+            test_acc: test accuracy (accepts 0-1 or 0-100, stores percent)
 
         Any kwarg is logged as a scalar with name based on key.
         """
@@ -45,12 +45,18 @@ class TBLogger:
                 if key == "loss":
                     self.writer.add_scalar("Loss/train", value, step)
                 elif key == "train_acc":
-                    self.writer.add_scalar("Accuracy/train", value, step)
+                    self.writer.add_scalar("Accuracy/train", self._normalize_accuracy(value), step)
                 elif key == "test_acc":
-                    self.writer.add_scalar("Accuracy/test", value, step)
+                    self.writer.add_scalar("Accuracy/test", self._normalize_accuracy(value), step)
                 else:
                     self.writer.add_scalar(key, value, step)
 
     def close(self):
         if self.writer is not None:
             self.writer.close()
+
+    @staticmethod
+    def _normalize_accuracy(value):
+        if 0.0 <= value <= 1.0:
+            return value * 100.0
+        return value

@@ -1,0 +1,70 @@
+# Modal Training Template
+
+Reusable scaffold for running ML experiments on Modal with checkpoint resumption and TensorBoard logging.
+
+## Quick Start
+
+```bash
+# Local
+source venv/bin/activate
+python train.py
+
+# Modal (detached, survives terminal close)
+modal run --detach modal_run.py --exp train
+```
+
+## Key Files
+
+- `modal_run.py` - Modal wrapper with volumes for checkpoints/outputs
+- `requirements-modal.txt` - Minimal deps for Modal (no local CUDA)
+- `checkpoint_utils.py` - Save/resume checkpoints (Modal preemption-safe)
+- `tensorboard_utils.py` - Real-time TensorBoard logging utility
+
+## Gotchas
+
+- **Ignore list must be hardcoded** in `add_local_dir()`. Don't try to read from `.gitignore` dynamically. The image definition runs on Modal's build server before files are uploaded.
+- **Load checkpoint BEFORE `torch.compile()`**. Compiled models have `_orig_mod.` prefixes in state dict keys. Load into the uncompiled model first, then compile.
+- **Config is required for checkpoints**. `load_checkpoint()` and `save_checkpoint()` require a config dict so hyperparameter drift fails loudly.
+- **Use unique checkpoint prefixes per experiment**. Example: `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`.
+- **Volumes persist indefinitely**. Old checkpoints and logs stay around until you remove them.
+- **A disconnected client does not imply a stopped job**. With `--detach`, local connection loss only means your terminal lost the stream.
+- **Prefer volume log files for monitoring detached or finished jobs**. `modal app logs` is useful while the app is active, but the most reliable status source is a log file written to `output_dir`, then queried with `modal volume get`.
+- **Don't pipe `modal run --detach` through `tail`, `head`, or similar commands**. The detached stream stays open, so buffering commands hang waiting for EOF.
+
+## Experiment Contract
+
+Experiments must expose a `train(output_dir=".")` function:
+
+```python
+def train(output_dir="."):
+    # Save checkpoints and logs under output_dir
+    return {"accuracy": 0.95}
+```
+
+## Modal Commands
+
+```bash
+modal run --detach modal_run.py --exp <experiment_name>  # Run
+modal volume ls outputs                                   # List checkpoints/logs
+modal volume get outputs log.txt /dev/stdout             # Poll progress from volume logs
+modal app logs <app-id>                                   # Active-run debugging only
+modal volume get outputs <file> .                         # Download artifacts
+```
+
+## TensorBoard
+
+```python
+from tensorboard_utils import TBLogger
+logger = TBLogger(output_dir, "my_exp")
+logger.log(step, loss=0.5, train_acc=0.8, test_acc=0.7)  # accuracy stored as percent
+logger.close()
+```
+
+Download runs from Modal and view locally:
+
+```bash
+modal volume get outputs runs/ .
+tensorboard --logdir runs/
+```
+
+Live monitoring: re-run `modal volume get outputs runs/ .` periodically while training. TensorBoard will pick up appended event files.
