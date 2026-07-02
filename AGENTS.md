@@ -29,7 +29,9 @@ modal run --detach modal_run.py --exp train
 - **Use unique checkpoint prefixes per experiment**. Example: `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`.
 - **Refresh and commit Volumes explicitly**. A reused container calls `reload()` before looking for checkpoints, and the wrapper calls `commit()` before the invocation exits.
 - **Volumes persist independently of App log retention**. Old checkpoints and log files stay around until you remove them.
-- **A disconnected client does not imply a stopped job**. With `--detach`, local connection loss only means your terminal lost the stream.
+- **Launch with `spawn()`, not `.remote()`, for long training runs**. A `.remote()` client holds a live connection for the whole run, and when that connection breaks (laptop sleep, a network blip), the exiting client cancels the input — even under `--detach`. Spawn from the local entrypoint and exit; the run then needs no client at all. This canceled three multi-hour training runs on 2026-07-02, and the logs ("Received a cancellation signal while processing input") look deceptively like worker preemption.
+- **Set `retries=modal.Retries(...)` on training functions**. Without a retry policy, a lost GPU worker kills the input permanently instead of restarting it; with retries plus checkpoint resumption, worker loss self-heals.
+- **A disconnected client does not imply a stopped job**. With `--detach`, losing the stream cleanly (terminal close) leaves the job running — but see the `spawn()` bullet above: a client that *errors out* while attached can cancel the run on its way down.
 - **Prefer volume log files for monitoring detached or finished jobs**. `modal app logs` is useful while the app is active, but the most reliable status source is a log file written to `output_dir`, then queried with `modal volume get`.
 - **Don't pipe `modal run --detach` through `tail`, `head`, or similar commands**. The detached stream stays open, so buffering commands hang waiting for EOF.
 
