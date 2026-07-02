@@ -16,8 +16,8 @@ modal run --detach modal_run.py --exp train
 ## Key Files
 
 - `modal_run.py` - Modal wrapper with volumes for checkpoints/outputs
-- `requirements-modal.txt` - Minimal deps for Modal (no local CUDA)
-- `checkpoint_utils.py` - Save/resume checkpoints (Modal preemption-safe)
+- `requirements-modal.txt` - Pinned minimal deps for Modal
+- `checkpoint_utils.py` - Save/resume checkpoints using atomic publication
 - `tensorboard_utils.py` - Real-time TensorBoard logging utility
 
 ## Gotchas
@@ -25,8 +25,10 @@ modal run --detach modal_run.py --exp train
 - **Ignore list must be hardcoded** in `add_local_dir()`. Don't try to read from `.gitignore` dynamically. The image definition runs on Modal's build server before files are uploaded.
 - **Load checkpoint BEFORE `torch.compile()`**. Compiled models have `_orig_mod.` prefixes in state dict keys. Load into the uncompiled model first, then compile.
 - **Config is required for checkpoints**. `load_checkpoint()` and `save_checkpoint()` require a config dict so hyperparameter drift fails loudly.
+- **Publish checkpoints atomically**. `save_checkpoint()` writes to a temporary sibling file and renames only complete snapshots into the checkpoint namespace.
 - **Use unique checkpoint prefixes per experiment**. Example: `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`.
-- **Volumes persist indefinitely**. Old checkpoints and logs stay around until you remove them.
+- **Refresh and commit Volumes explicitly**. A reused container calls `reload()` before looking for checkpoints, and the wrapper calls `commit()` before the invocation exits.
+- **Volumes persist independently of App log retention**. Old checkpoints and log files stay around until you remove them.
 - **A disconnected client does not imply a stopped job**. With `--detach`, local connection loss only means your terminal lost the stream.
 - **Prefer volume log files for monitoring detached or finished jobs**. `modal app logs` is useful while the app is active, but the most reliable status source is a log file written to `output_dir`, then queried with `modal volume get`.
 - **Don't pipe `modal run --detach` through `tail`, `head`, or similar commands**. The detached stream stays open, so buffering commands hang waiting for EOF.

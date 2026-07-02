@@ -6,7 +6,7 @@ Run on Modal: modal run --detach modal_run.py --exp train
 """
 
 import os
-from checkpoint_utils import find_latest_checkpoint, load_checkpoint, save_checkpoint, restore_optimizer
+from checkpoint_utils import atomic_torch_save, find_latest_checkpoint, load_checkpoint, save_checkpoint, restore_optimizer
 from tensorboard_utils import TBLogger
 
 
@@ -14,6 +14,10 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
     import torch
     import torch.nn as nn
     import torch.optim as optim
+
+    if epochs <= 0:
+        raise ValueError("epochs must be positive")
+    os.makedirs(output_dir, exist_ok=True)
 
     # Config dict for checkpoint validation - prevents resuming with wrong hyperparameters
     CONFIG = {
@@ -33,6 +37,13 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
     use_compile = device.type == "cuda"
     print(f"torch.compile enabled: {use_compile}")
 
+    # Log file on volume - poll with: modal volume get outputs log.txt /dev/stdout
+    log_path = os.path.join(output_dir, "log.txt")
+    def log(msg):
+        print(msg)
+        with open(log_path, "a") as f:
+            f.write(msg + "\n")
+
     # Model
     model = nn.Sequential(
         nn.Linear(64, 128),
@@ -44,12 +55,25 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
 
     # Check for existing checkpoint (prefix includes experiment name to avoid collisions)
     checkpoint_prefix = f"{CONFIG['experiment']}_checkpoint_epoch"
-    checkpoint_path, start_epoch = find_latest_checkpoint(output_dir, checkpoint_prefix)
+    checkpoint_path, _ = find_latest_checkpoint(output_dir, checkpoint_prefix)
     if checkpoint_path:
         print(f"Resuming from checkpoint: {checkpoint_path}")
         checkpoint_data = load_checkpoint(checkpoint_path, model, CONFIG)
+        start_epoch = checkpoint_data['step'] + 1
     else:
         checkpoint_data = None
+        start_epoch = 0
+
+    final_path = os.path.join(output_dir, "model_final.pt")
+    if checkpoint_data and start_epoch >= epochs:
+        if not os.path.exists(final_path):
+            atomic_torch_save(checkpoint_data['model_state_dict'], final_path)
+            log(f"Restored missing final model from completed checkpoint: {final_path}")
+        log(f"Training already complete at epoch {start_epoch}/{epochs}; no work to resume.")
+        return checkpoint_data.get(
+            'metrics',
+            {'status': 'already_complete', 'last_epoch': checkpoint_data['step']},
+        )
 
     if use_compile:
         model = torch.compile(model)
@@ -59,19 +83,9 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
 
     if checkpoint_data:
         restore_optimizer(optimizer, checkpoint_data, device)
-        start_epoch = checkpoint_data['step'] + 1
-    else:
-        start_epoch = 0
 
     # TensorBoard logger
     logger = TBLogger(output_dir, "train")
-
-    # Log file on volume — poll with: modal volume get outputs log.txt /dev/stdout
-    log_path = os.path.join(output_dir, "log.txt")
-    def log(msg):
-        print(msg)
-        with open(log_path, "a") as f:
-            f.write(msg + "\n")
 
     # Synthetic data
     X = torch.randn(1000, 64).to(device)
@@ -102,26 +116,26 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
 
         avg_loss = epoch_loss / num_batches
         accuracy = 100.0 * correct / total
+        result = {"final_loss": avg_loss, "final_acc": accuracy}
 
         log(f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | Acc: {accuracy:.1f}%")
         logger.log(epoch, loss=avg_loss, train_acc=accuracy)
 
         # Save checkpoint every epoch
         checkpoint_path = os.path.join(output_dir, f"{checkpoint_prefix}{epoch}.pt")
-        save_checkpoint(checkpoint_path, epoch, model, optimizer, CONFIG)
+        save_checkpoint(checkpoint_path, epoch, model, optimizer, CONFIG, metrics=result)
 
     logger.close()
 
     # Save final model
-    final_path = os.path.join(output_dir, "model_final.pt")
     final_state_dict = {
         k.replace('_orig_mod.', ''): v
         for k, v in model.state_dict().items()
     }
-    torch.save(final_state_dict, final_path)
+    atomic_torch_save(final_state_dict, final_path)
     print(f"\nFinal model saved: {final_path}")
 
-    return {"final_loss": avg_loss, "final_acc": accuracy}
+    return result
 
 
 if __name__ == "__main__":

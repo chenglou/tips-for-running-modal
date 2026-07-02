@@ -1,5 +1,3 @@
 # Local development dependencies
-torch
-numpy
-tensorboard
-modal
+-r requirements-modal.txt
+modal==1.2.6

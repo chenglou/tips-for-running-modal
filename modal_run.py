@@ -18,7 +18,7 @@ outputs_volume = modal.Volume.from_name("outputs", create_if_missing=True)
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install_from_requirements("requirements-modal.txt")
-    .add_local_dir(".", remote_path="/root/project", ignore=["venv/", ".venv/", "__pycache__/", "*.pyc", ".git/", "runs/", "*.pt", "*.log"])
+    .add_local_dir(".", remote_path="/root/project", ignore=["venv/", ".venv/", "__pycache__/", "*.pyc", ".git/", "runs/", "*.pt", "*.pt.*.tmp", "*.log"])
 )
 
 
@@ -36,18 +36,23 @@ def run_training(exp_name: str):
 
     sys.path.insert(0, "/root/project")
 
-    # Dynamically import the experiment module
-    exp_module = importlib.import_module(exp_name)
+    # A reused container needs an explicit refresh before inspecting checkpoints.
+    outputs_volume.reload()
+    try:
+        # Dynamically import the experiment module
+        exp_module = importlib.import_module(exp_name)
 
-    result = exp_module.train(output_dir="/outputs")
+        result = exp_module.train(output_dir="/outputs")
 
-    # Volumes auto-persist on function exit
-    print(f"\nResult: {result}")
-    print("\nOutputs saved to 'outputs' volume.")
-    print("Run 'modal volume ls outputs' to see files.")
-    print("Run 'modal volume get outputs <filename>' to download.")
+        print(f"\nResult: {result}")
+        print("\nOutputs saved to 'outputs' volume.")
+        print("Run 'modal volume ls outputs' to see files.")
+        print("Run 'modal volume get outputs <filename>' to download.")
 
-    return result
+        return result
+    finally:
+        # Persist the latest checkpoint/log writes promptly, including on errors.
+        outputs_volume.commit()
 
 
 @app.local_entrypoint()

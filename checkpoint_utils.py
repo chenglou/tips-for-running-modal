@@ -4,7 +4,26 @@
 import os
 import glob
 import re
+import tempfile
 import torch
+
+
+def atomic_torch_save(data, path):
+    """Save a torch artifact without exposing a partially-written final path."""
+    output_dir = os.path.dirname(path) or "."
+    os.makedirs(output_dir, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.",
+        suffix=".tmp",
+        dir=output_dir,
+    )
+    os.close(fd)
+    try:
+        torch.save(data, temp_path)
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def find_latest_checkpoint(output_dir, prefix):
@@ -93,7 +112,7 @@ def restore_optimizer(optimizer, checkpoint_data, device):
                 state[k] = v.to(device)
 
 
-def save_checkpoint(path, step, model, optimizer, config):
+def save_checkpoint(path, step, model, optimizer, config, metrics=None):
     """Save checkpoint with clean state dict (strips _orig_mod. prefix).
 
     Config is required to ensure every checkpoint can be validated on resume.
@@ -104,6 +123,8 @@ def save_checkpoint(path, step, model, optimizer, config):
         model: Model (may be compiled)
         optimizer: Optimizer
         config: Config dict to save for verification on resume (required)
+        metrics: Optional result metrics to return if this checkpoint already
+            completes a later resumed invocation.
     """
     # Strip _orig_mod. prefix from compiled model keys
     state_dict = {
@@ -117,5 +138,7 @@ def save_checkpoint(path, step, model, optimizer, config):
         'optimizer_state_dict': optimizer.state_dict(),
         'config': config,
     }
+    if metrics is not None:
+        checkpoint['metrics'] = metrics
 
-    torch.save(checkpoint, path)
+    atomic_torch_save(checkpoint, path)
