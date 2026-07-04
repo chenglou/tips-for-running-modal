@@ -1,6 +1,6 @@
 # Modal Training Template
 
-Reusable scaffold for running ML experiments on Modal with checkpoint resumption and TensorBoard logging.
+Reusable scaffold for running ML experiments on Modal with checkpoint resumption and TensorBoard logging. Extracted from a real training project ([sotaku](https://github.com/chenglou/sotaku)); every gotcha below was hit for real there.
 
 ## Quick Start
 
