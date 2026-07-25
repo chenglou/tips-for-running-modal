@@ -20,21 +20,30 @@ modal run --detach modal_run.py --exp train
 - `checkpoint_utils.py` - Save/resume checkpoints using atomic publication
 - `tensorboard_utils.py` - Real-time TensorBoard logging utility
 
-## Gotchas
+## Launching Jobs
 
-- **Ignore list must be hardcoded** in `add_local_dir()`. Don't try to read from `.gitignore` dynamically. The image definition runs on Modal's build server before files are uploaded.
-- **Load checkpoint BEFORE `torch.compile()`**. Compiled models have `_orig_mod.` prefixes in state dict keys. Load into the uncompiled model first, then compile.
-- **Config is required for checkpoints**. `load_checkpoint()` and `save_checkpoint()` require a config dict so hyperparameter drift fails loudly.
-- **Publish checkpoints atomically**. `save_checkpoint()` writes to a temporary sibling file and renames only complete snapshots into the checkpoint namespace.
-- **Use unique checkpoint prefixes per experiment**. Example: `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`.
-- **Refresh and commit Volumes explicitly**. A reused container calls `reload()` before looking for checkpoints, and the wrapper calls `commit()` before the invocation exits.
-- **Volumes persist independently of App log retention**. Old checkpoints and log files stay around until you remove them.
-- **Launch with `spawn()`, not `.remote()`, for long training runs**. A `.remote()` client holds a live connection for the whole run, and when that connection breaks (laptop sleep, a network blip), the exiting client cancels the input — even under `--detach`. Spawn from the local entrypoint and exit; the run then needs no client at all. This canceled three multi-hour training runs on 2026-07-02, and the logs ("Received a cancellation signal while processing input") look deceptively like worker preemption.
-- **Keep one `spawn()` per detached local-entrypoint invocation**. Once the entrypoint exits, Modal only guarantees that its last spawned call stays alive. Launch independent jobs with separate `modal run --detach` commands, or keep one remote parent alive until every child finishes.
-- **Set `retries=modal.Retries(...)` on training functions**. Without a retry policy, a lost GPU worker kills the input permanently instead of restarting it; with retries plus checkpoint resumption, worker loss self-heals.
-- **A disconnected client does not imply a stopped job**. With `--detach`, losing the stream cleanly (terminal close) leaves the job running — but see the `spawn()` bullet above: a client that *errors out* while attached can cancel the run on its way down.
-- **Prefer volume log files for monitoring detached or finished jobs**. `modal app logs` is useful while the app is active, but the most reliable status source is a log file written to `output_dir`, then queried with `modal volume get`.
-- **Don't pipe `modal run --detach` through `tail`, `head`, or similar commands**. The detached stream stays open, so buffering commands hang waiting for EOF.
+- **Use `spawn()`, not `.remote()`, for long runs.** A `.remote()` call keeps the client attached. If the client errors during laptop sleep or a network change, it can cancel the input even when the command used `--detach`. This failure looks like worker preemption in the logs.
+- **Keep one `spawn()` per detached entrypoint invocation.** Modal only guarantees that the last spawned call survives after the entrypoint exits. Launch independent jobs with separate `modal run --detach` commands.
+- **Add retries to the remote training function.** `retries=modal.Retries(...)` lets a preempted worker restart the same input; resumable checkpoints let the retry continue instead of starting over.
+- **Set an explicit timeout.** Modal's default is too short for most training jobs.
+- **Do not pipe a detached launch through `tail`, `head`, or similar commands.** The stream can remain open, so the downstream command waits indefinitely.
+
+## Monitoring
+
+- **The local entrypoint and remote worker have separate lifetimes.** `modal run --detach` may print `App completed` when the entrypoint exits even though the spawned worker is still running.
+- **Use `modal container list` for active-worker status.** A disconnected local stream does not imply that the worker stopped.
+- **Read active, uncommitted logs with `modal container exec`.** For example, `modal container exec <container-id> cat /outputs/run/train.log`.
+- **Use Volume files as the durable result.** After the worker exits, verify its result or final checkpoint with `modal volume ls` or `modal volume get`. No active container alone does not distinguish success from failure.
+- **Use `modal app logs` only for active debugging.** App logs expire with the App; output files on a Volume persist until removed.
+
+## Images, Volumes, And Checkpoints
+
+- **Hardcode the `add_local_dir()` ignore list.** Image definitions run before project files are uploaded, so they cannot derive the list from a local `.gitignore`.
+- **Reload before reading and commit after writing.** Reused containers call `Volume.reload()` before checkpoint discovery, and wrappers call `Volume.commit()` before returning.
+- **Save resumable state atomically.** Include model, optimizer, step, and config. Write a temporary sibling file, then rename it into the checkpoint namespace.
+- **Use a unique checkpoint prefix per experiment.** For example, `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`.
+- **Save selected weights when the metric improves.** Recording `best_accuracy` without the matching state is insufficient when the best step falls between periodic checkpoints.
+- **Load before `torch.compile()`.** Compiled state dicts contain `_orig_mod.` prefixes. Load into the uncompiled model, then compile it.
 
 ## Experiment Contract
 
