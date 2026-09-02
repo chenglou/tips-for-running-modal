@@ -33,6 +33,9 @@ modal run --detach modal_run.py --exp train
 - **The local entrypoint and remote worker have separate lifetimes.** `modal run --detach` may print `App completed` when the entrypoint exits even though the spawned worker is still running.
 - **Use `modal container list` for active-worker status.** A disconnected local stream does not imply that the worker stopped.
 - **Read active, uncommitted logs with `modal container exec`.** For example, `modal container exec <container-id> cat /outputs/run/train.log`.
+- **Separate remote-command options with `--`.** For example, `modal container exec <container-id> -- tail -n 30 /outputs/run/train.log`. Without the separator, Modal can parse `-n` as its own option.
+- **Create the local directory before a recursive Volume download.** For example, run `mkdir -p downloaded` before `modal volume get outputs run/ downloaded/`. In CLI 1.2.6, a nonexistent destination can be treated as one file, causing several remote files to overwrite that same path. Check the downloaded file list and checksums; a successful CLI exit is not enough.
+- **Use `modal volume get` for binary files.** CLI 1.2.6 decodes `container exec` output as UTF-8, so raw tar/zip output can fail even with exit code zero. When a file is only available in the container, encode it as base64 inside the container and decode it locally, then verify the archive and checksum.
 - **Use Volume files as the durable result.** After the worker exits, verify its result or final checkpoint with `modal volume ls` or `modal volume get`. No active container alone does not distinguish success from failure.
 - **Use `modal app logs` only for active debugging.** App logs expire with the App; output files on a Volume persist until removed.
 
