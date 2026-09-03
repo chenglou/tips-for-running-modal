@@ -37,6 +37,7 @@ modal run --detach modal_run.py --exp train
 - **Create the local directory before a recursive Volume download.** For example, run `mkdir -p downloaded` before `modal volume get outputs run/ downloaded/`. In CLI 1.2.6, a nonexistent destination can be treated as one file, causing several remote files to overwrite that same path. Check the downloaded file list and checksums; a successful CLI exit is not enough.
 - **Use `modal volume get` for binary files.** CLI 1.2.6 decodes `container exec` output as UTF-8, so raw tar/zip output can fail even with exit code zero. When a file is only available in the container, encode it as base64 inside the container and decode it locally, then verify the archive and checksum.
 - **Use Volume files as the durable result.** After the worker exits, verify its result or final checkpoint with `modal volume ls` or `modal volume get`. No active container alone does not distinguish success from failure.
+- **Treat result-read connection errors separately from worker failures.** `FunctionCall.get()` can raise `modal.exception.ConnectionError` while the worker continues or its completed result is already on the Volume. Retry the read with backoff and check the Volume; do not launch a replacement. A read-only result collector can be restarted using its saved call IDs and local cache without touching detached workers.
 - **Use `modal app logs` only for active debugging.** App logs expire with the App; output files on a Volume persist until removed.
 
 ## Images, Volumes, And Checkpoints
