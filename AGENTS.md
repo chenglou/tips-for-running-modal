@@ -42,6 +42,7 @@ modal run --detach modal_run.py --exp train
 ## Images, Volumes, And Checkpoints
 
 - **Hardcode the `add_local_dir()` ignore list.** Image definitions run before project files are uploaded, so they cannot derive the list from a local `.gitignore`.
+- **Use recursive globs for nested artifacts.** In Modal 1.2.6, `*.pt` excludes root-level checkpoints only; `**/*.pt` excludes checkpoints at every depth. The same applies to logs and bytecode. Check representative paths with `modal.file_pattern_matcher.FilePatternMatcher` rather than assuming `.gitignore` matching rules.
 - **Reload before reading and commit after writing.** Reused containers call `Volume.reload()` before checkpoint discovery, and wrappers call `Volume.commit()` before returning.
 - **Save resumable state atomically.** Include model, optimizer, step, and config. Write a temporary sibling file, then rename it into the checkpoint namespace.
 - **Use a unique checkpoint prefix per experiment.** For example, `CHECKPOINT_PREFIX = "exp_name_checkpoint_step"`.
