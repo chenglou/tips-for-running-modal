@@ -42,6 +42,7 @@ modal run --detach modal_run.py --exp train
 
 ## Images, Volumes, And Checkpoints
 
+- **Set up the remote Python path before importing project modules.** Module-level imports run before your worker's setup function. Keep project imports inside the worker after adding the uploaded project directory to `sys.path`; when local image construction needs project constants, guard that import with `if modal.is_local():`.
 - **Hardcode the `add_local_dir()` ignore list.** Image definitions run before project files are uploaded, so they cannot derive the list from a local `.gitignore`.
 - **Reload before reading and commit after writing.** Reused containers call `Volume.reload()` before checkpoint discovery, and wrappers call `Volume.commit()` before returning.
 - **Save resumable state atomically.** Include model, optimizer, step, and config. Write a temporary sibling file, then rename it into the checkpoint namespace.
