@@ -18,7 +18,11 @@ outputs_volume = modal.Volume.from_name("outputs", create_if_missing=True)
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install_from_requirements("requirements-modal.txt")
-    .add_local_dir(".", remote_path="/root/project", ignore=["venv/", ".venv/", "__pycache__/", "*.pyc", ".git/", "runs/", "*.pt", "*.pt.*.tmp", "*.log"])
+    # Patterns match from the project root: "*.pt" would skip only top-level checkpoints, so artifacts use "**/".
+    .add_local_dir(".", remote_path="/root/project", ignore=[
+        "venv/", ".venv/", ".git/",
+        "**/__pycache__/", "**/*.pyc", "**/runs/", "**/*.pt", "**/*.pt.*.tmp", "**/*.log", "**/log.txt",
+    ])
 )
 
 
