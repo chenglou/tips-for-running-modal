@@ -30,8 +30,9 @@ image = (
     image=image,
     gpu="T4",  # Change to "A100", "H100", "H200" for more power
     timeout=24 * 60 * 60,  # 24 hours max
-    # Restart on worker loss instead of dying; training resumes from the latest
-    # checkpoint in /outputs at function start.
+    # Re-run the input if it fails. Preemption restarts it anyway, without retries and
+    # past max_retries; either way training resumes from the latest checkpoint in
+    # /outputs at function start.
     retries=modal.Retries(max_retries=3, initial_delay=10.0),
     volumes={
         "/outputs": outputs_volume,

@@ -24,7 +24,7 @@ modal run --detach modal_run.py --exp train
 
 - **Use `spawn()`, not `.remote()`, for long runs.** A `.remote()` call keeps the client attached. If the client errors during laptop sleep or a network change, it can cancel the input even when the command used `--detach`. This failure looks like worker preemption in the logs.
 - **Keep one `spawn()` per detached entrypoint invocation.** Modal only guarantees that the last spawned call survives after the entrypoint exits. Launch independent jobs with separate `modal run --detach` commands.
-- **Add retries to the remote training function.** `retries=modal.Retries(...)` lets a preempted worker restart the same input; resumable checkpoints let the retry continue instead of starting over.
+- **Make the function resumable: preemption restarts it with or without retries.** Modal restarts a preempted input on the same input whether or not the function sets `retries=`, and `max_retries` does not cap those restarts: one input with `max_retries=1` restarted five times in four hours. `retries=modal.Retries(...)` re-runs inputs that fail. Either way, resumable checkpoints (or a store of finished work that a restart replays) let the restart continue instead of starting over. Don't count restarts as crashes in your own guards.
 - **Set an explicit timeout.** Modal's default is too short for most training jobs.
 - **Do not pipe a detached launch through `tail`, `head`, or similar commands.** The stream can remain open, so the downstream command waits indefinitely.
 
@@ -32,9 +32,10 @@ modal run --detach modal_run.py --exp train
 
 - **The local entrypoint and remote worker have separate lifetimes.** `modal run --detach` may print `App completed` when the entrypoint exits even though the spawned worker is still running.
 - **Use `modal container list` for active-worker status.** A disconnected local stream does not imply that the worker stopped.
-- **Read active, uncommitted logs with `modal container exec`.** For example, `modal container exec <container-id> cat /outputs/run/train.log`.
+- **Read active, uncommitted logs with `modal container exec`.** For example, `modal container exec <container-id> cat /outputs/run/train.log`. Keep those logs under the Volume mount: `exec` cannot reach a container that has finished, and on some containers (a CPU container and a T4) it saw an empty `/tmp`.
 - **Separate remote-command options with `--`.** For example, `modal container exec <container-id> -- tail -n 30 /outputs/run/train.log`. Without the separator, Modal can parse `-n` as its own option.
 - **Create the local directory before a recursive Volume download.** For example, run `mkdir -p downloaded` before `modal volume get outputs run/ downloaded/`; this creates `downloaded/run/`, including the remote directory's basename. Avoid accidentally downloading into `downloaded/run/` and getting another nested `run/`. In CLI 1.2.6, a nonexistent destination can be treated as one file, causing several remote files to overwrite that same path. Check the downloaded file list and checksums; a successful CLI exit is not enough.
+- **Print a Volume file with `-`, not `/dev/stdout`.** In CLI 1.2.6, `modal volume get outputs log.txt /dev/stdout` fails: the destination already exists, so the CLI refuses it without `--force`. `modal volume get outputs log.txt -` writes the file to standard output.
 - **Use `modal volume get` for binary files.** CLI 1.2.6 decodes `container exec` output as UTF-8, so raw tar/zip output can fail even with exit code zero. When a file is only available in the container, encode it as base64 inside the container and decode it locally, then verify the archive and checksum.
 - **Use Volume files as the durable result.** After the worker exits, verify its result or final checkpoint with `modal volume ls` or `modal volume get`. No active container alone does not distinguish success from failure.
 - **Treat result-read connection errors separately from worker failures.** `FunctionCall.get()` can raise `modal.exception.ConnectionError` while the worker continues or its completed result is already on the Volume. Retry the read with backoff and check the Volume; do not launch a replacement. A read-only result collector can be restarted using its saved call IDs and local cache without touching detached workers.
@@ -67,7 +68,7 @@ def train(output_dir="."):
 ```bash
 modal run --detach modal_run.py --exp <experiment_name>  # Run
 modal volume ls outputs                                   # List checkpoints/logs
-modal volume get outputs log.txt /dev/stdout             # Poll progress from volume logs
+modal volume get outputs log.txt -                        # Poll progress from volume logs ("-" is stdout)
 modal app logs <app-id>                                   # Active-run debugging only
 modal volume get outputs <file> .                         # Download artifacts
 ```

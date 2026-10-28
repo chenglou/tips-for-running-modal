@@ -37,7 +37,7 @@ def train(output_dir=".", epochs=10, batch_size=32, lr=0.001):
     use_compile = device.type == "cuda"
     print(f"torch.compile enabled: {use_compile}")
 
-    # Log file on volume - poll with: modal volume get outputs log.txt /dev/stdout
+    # Log file on volume - poll with: modal volume get outputs log.txt -
     log_path = os.path.join(output_dir, "log.txt")
     def log(msg):
         print(msg)
